@@ -25,8 +25,7 @@ interface Story {
 const app = express();
 const port = process.env.PORT || 4000;
 
-// 백엔드 폴더 안에 실제로 존재하는 JSON 파일 이름과 맞추세요.
-const KEYFILEPATH = path.resolve('mindcraft-sheets-service.json');
+const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
 // 여기는 이미 제대로 들어가 있음
 const SPREADSHEET_ID = '10zY5a1D00T1dLYis02eM2vprGyb9gInLWjjjntVSZBI';
 
@@ -63,7 +62,6 @@ async function readStories(): Promise<Story[]> {
 
 async function authSheets() {
   const auth = new google.auth.GoogleAuth({
-    keyFile: KEYFILEPATH,
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
 
