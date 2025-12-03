@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "mindcraftdb",
+  "private_key_id": "d084b7847c9cc9c33750a02fb0e42333dd44083b",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDEZ4dBRQGIkK5y\nja2XQ+rLlvhmcQX7/hK5Kns57/2gohde9qyqDVoj/8kXxp/xEN531cd2iqBajM/n\nSF+ANGRIlmgN1Ty5Tn+ZoyuNh0LzFKD8q078BxFiNZDd3srtL/aBvJEHRGzBgIcb\nzbHZ8J5sFJFfxeZ8urN3/qQvTeidrOzlQCu1XIcv2wFZO9Q0peytc+fP2KKfJlp3\n0j73n+d5L0bxfexR+6Wdvqez++05N2otcUX5uN7BqqY+x6TKGOymF87GewkUW7rN\njD2FJFfsdrbugQ5WetVb59vH7enJ/LLiTZfsZNAJPbz9M5Kaa9jdbhBu/E8RVhmz\n9447wlf9AgMBAAECggEADAluRCVHBUgcsN+W+nTKoISVn62gmMOHATslxzS6ngwh\nE4xZo6hi1F76Q49EQSFwCPccnNq9Hh+QJFQOqkxLsxkosmRVruOtNUzHQArAoyYq\nAaI8Gn0SZyryQG7FkAjG+keEueXLJobKgP03v6wcAXK3QB/gUtecZSfBhzamoXca\nbt9wkVda4u2ONq3BL7jIt5WBnTb33xpfw6j/ixhC6fIg9MLtgoTkWVE66lAM1K4m\nIVY5in9TKaf5scqxhTV1PQ+9zOZVhUyHakIq1hCZyaN8O92UJlBArjl6n6UiUax5\nPNXVYhUmz9tzk7aUqhR/27AhkMe2okmGr3KIjLh8MQKBgQD+jROX210M62NrWmd3\no+lmCbnD0jTEgZuBKTGFjWuW+h6yOpbbY/upT5rjRN1MonZG4tIS0EDMNE8+efk9\nWWk/hHpQfq6QPbLUoDYlBDJ0v19VBbT+k4T8U2O/la0nCXH27fbNFhnk2ng7l7Xm\noMWKiWxASfls0RPmlzabDXHIGQKBgQDFhbjuLlO5OL5C5jJ6XSzNfeKJiq9d3zEd\nkT+LS48rzW1CyZXAj4QWzngj8Px0gABos7vLMVE26lc1TcjOowIPUSoTAIAOa8T+\nWNTlBW0qEYH1gIkCWg4p8u5OSSZoYptPvbY5hZlq6UgC5lNLXxOmn7o4XEDny8z9\nKRrRxDjbhQKBgEVStltM6nJySIkb/cGfahjX3TdvL9+0TF1IkqwEb6CWTXXMbvkg\nqZDalRv/zSTpubxkWUG2ZW83b71cCnyitP8PXSA+39t4chNl7lj2Y6dX1uaYv0n1\ncuok661pXdabw+WzuNrxgevJc6UHFArTDflEo65+ducjqX/K/pwLdUlBAoGBALWX\nQbQffTNMuoZQkdmzLYxiDlG64Yygs8vmDBBoz+BKRQfgwj888gfxm7wXQlFsmHOp\nwZ2F4o9lE/XaZCGs9SjVyqObkx8u7vWS/27p9Tl2zQ7CM7OozVq9j18Dmz7eYMEH\nva7WZ3xFqcGYtL0XVL6cHBzSm40+7V9VWeW9yzPtAoGAZoLe9x9YUHXaUsm3qao9\nvTC8fvKD664Zm2gtKk+nGKHh0/goBU80dkSmGeiJ49ODbQegqd3mqaYMJ4ZSprRR\ndzd48PAEZIxuIa9vOKkYyHL8w0lAWbyZBx5EstXW8yAmry879xTdz/YJEaChZgRW\niLJKd2UMT8h1aADaw51Aq9A=\n-----END PRIVATE KEY-----\n",
+  "client_email": "mindcraft-sheets-service@mindcraftdb.iam.gserviceaccount.com",
+  "client_id": "109488214587983306017",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/mindcraft-sheets-service%40mindcraftdb.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
