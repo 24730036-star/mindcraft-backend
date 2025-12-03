@@ -7,7 +7,6 @@ const router = Router();
 const SHEET_NAME = "Stories";
 
 /**
- * 이 라우터에서 사용할 Story 타입
  * 스프레드시트 컬럼 순서:
  *  A: id
  *  B: ownerId
@@ -20,7 +19,7 @@ const SHEET_NAME = "Stories";
  *  I: createdAt
  *  J: updatedAt
  */
-interface Story {
+export interface Story {
   id: number;
   ownerId: number;
   title: string;
@@ -96,12 +95,12 @@ router.get("/:id", async (req, res) => {
       return res.status(404).json({ error: "Story not found" });
     }
 
-    const found = rows.find((row) => Number(row[0]) === id);
-    if (!found) {
+    const row = rows.find((r) => Number(r[0]) === id);
+    if (!row) {
       return res.status(404).json({ error: "Story not found" });
     }
 
-    return res.json(rowToStory(found));
+    return res.json(rowToStory(row));
   } catch (err) {
     console.error("[GET /api/stories/:id] ERROR:", err);
     return res.status(500).json({ error: "Failed to fetch story" });
@@ -160,25 +159,21 @@ router.put("/:id", async (req, res) => {
       return res.status(404).json({ error: "Story not found" });
     }
 
-    let targetIndex = -1;
-    let currentStory: Story | null = null;
-
-    rows.forEach((row, idx) => {
-      if (Number(row[0]) === id) {
-        targetIndex = idx;
-        currentStory = rowToStory(row);
-      }
-    });
-
-    if (targetIndex === -1 || !currentStory) {
+    // 수정할 행 찾기
+    const rowIndex = rows.findIndex((row) => Number(row[0]) === id);
+    if (rowIndex === -1) {
       return res.status(404).json({ error: "Story not found" });
     }
 
+    const currentStory = rowToStory(rows[rowIndex]);
     const now = new Date().toISOString();
 
     const updated: Story = {
       ...currentStory,
-      ownerId: req.body.ownerId ?? currentStory.ownerId,
+      ownerId:
+        req.body.ownerId !== undefined
+          ? Number(req.body.ownerId)
+          : currentStory.ownerId,
       title: req.body.title ?? currentStory.title,
       genre: req.body.genre ?? currentStory.genre,
       keywords: req.body.keywords ?? currentStory.keywords,
@@ -189,8 +184,8 @@ router.put("/:id", async (req, res) => {
       updatedAt: now,
     };
 
-    // 시트의 실제 행 번호는 헤더 1줄 있다고 가정해서 +2
-    await updateRow(SHEET_NAME, targetIndex + 2, storyToRow(updated));
+    // 헤더 한 줄 있다고 가정해서 +2
+    await updateRow(SHEET_NAME, rowIndex + 2, storyToRow(updated));
 
     return res.json(updated);
   } catch (err) {
