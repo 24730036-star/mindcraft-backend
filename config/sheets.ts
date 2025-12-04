@@ -1,125 +1,146 @@
 // backend/config/sheets.ts
-import { google } from "googleapis";
+import { google, sheets_v4 } from "googleapis";
 
-const SHEETS_ID = process.env.GOOGLE_SHEETS_ID;
-
-if (!SHEETS_ID) {
-  console.error("[sheets] GOOGLE_SHEETS_ID env is not set");
-}
-
-let sheetsClient: ReturnType<typeof google.sheets> | null = null;
+type SheetsClient = sheets_v4.Sheets;
 
 /**
- * Google Sheets 클라이언트 초기화
- * - GOOGLE_APPLICATION_CREDENTIALS_JSON 환경변수에서 서비스 계정 키(JSON 문자열)를 읽어 사용
+ * 사용할 스프레드시트 ID
+ *  - Render 환경 변수 GOOGLE_SHEETS_ID 가 있으면 그 값을 사용
+ *  - 없으면 하드코딩된 ID 사용 (필요하면 수정)
  */
-async function getSheetsClient() {
-  if (sheetsClient) return sheetsClient;
+const SPREADSHEET_ID =
+  process.env.GOOGLE_SHEETS_ID ??
+  "10zY5a1D00T1dLYis02eM2vprGyb9gInLWjjjntVSZBI";
 
-  const raw = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-  if (!raw) {
+/** 서비스 계정 JSON 을 env 에서 읽어오기 */
+function parseCredentials() {
+  const json = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+  if (!json) {
     throw new Error("[sheets] GOOGLE_APPLICATION_CREDENTIALS_JSON env is not set");
   }
+  return JSON.parse(json);
+}
 
-  let credentials: any;
-  try {
-    credentials = JSON.parse(raw);
-  } catch (e) {
-    console.error("[sheets] Failed to parse GOOGLE_APPLICATION_CREDENTIALS_JSON:", e);
-    throw e;
-  }
+/** GoogleAuth 생성 */
+export async function getGoogleAuth() {
+  const credentials = parseCredentials();
 
   const auth = new google.auth.GoogleAuth({
     credentials,
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   });
 
-  sheetsClient = google.sheets({ version: "v4", auth });
-  return sheetsClient;
+  return auth;
 }
 
-/**
- * 특정 시트 범위 읽기
- * 예: sheetName="Users", range="A2:H"
- */
+/** Sheets 클라이언트 생성 */
+export async function getSheetsClient(): Promise<SheetsClient> {
+  const auth = await getGoogleAuth();
+
+  // 타입 에러 방지를 위해 auth 를 any 로 캐스팅
+  return google.sheets({
+    version: "v4",
+    auth: auth as any,
+  });
+}
+
+/** 시트 읽기 */
 export async function readSheet(
   sheetName: string,
   range = "A2:Z"
 ): Promise<string[][]> {
   const sheets = await getSheetsClient();
+
   const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEETS_ID!,
+    spreadsheetId: SPREADSHEET_ID,
     range: `${sheetName}!${range}`,
-    majorDimension: "ROWS",
   });
 
-  return (res.data.values as string[][]) || [];
+  return (res.data.values ?? []) as string[][];
 }
 
-/**
- * 마지막 행 뒤에 새 행 추가
- * values: 각 컬럼 값 배열
- * 반환값: 새로 추가된 행의 rowIndex (A1 기준 숫자, 예: 2, 3, 4 ...)
- */
+/** 한 줄 추가 */
 export async function appendRow(
   sheetName: string,
-  values: (string | number | null)[]
+  row: (string | number | boolean | null)[]
 ): Promise<number> {
   const sheets = await getSheetsClient();
-  const range = `${sheetName}!A:Z`;
 
-  await sheets.spreadsheets.values.append({
-    spreadsheetId: SHEETS_ID!,
-    range,
+  const values: (string | null)[][] = [
+    row.map((v) =>
+      v === null || v === undefined ? null : String(v)
+    ),
+  ];
+
+  const res = await sheets.spreadsheets.values.append({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${sheetName}!A:A`,
     valueInputOption: "RAW",
-    insertDataOption: "INSERT_ROWS",
-    requestBody: {
-      values: [values],
-    },
+    requestBody: { values },
   });
 
-  // 새 row index = 현재 전체 행 개수 + 1 (헤더 포함이라고 가정)
-  const all = await readSheet(sheetName);
-  // 우리가 읽는 건 A2부터니까, 실제 시트 rowIndex = all.length + 1 (헤더 1줄 + 데이터)
-  const rowIndex = all.length + 1;
+  const updates = res.data.updates;
+  const updatedRange = updates?.updatedRange ?? "";
+
+  // 예: "Users!A5:G5" → 5 추출
+  const match = updatedRange.match(/!.*?(\d+):/);
+  const rowIndex = match ? Number(match[1]) : -1;
+
   return rowIndex;
 }
 
-/**
- * Users 시트에서 첫 번째 컬럼(id)이 일치하는 행을 찾아 업데이트
- * - sheetName: "Users"
- * - id: 숫자 ID
- * - updater: 기존 row를 받아서 수정된 row를 리턴하는 함수
- */
-export async function updateRowById(
+/** 특정 행 번호(ArowIndex)를 통째로 업데이트 */
+export async function updateRow(
   sheetName: string,
-  id: number,
-  updater: (row: string[]) => string[]
+  rowIndex: number,
+  row: (string | number | boolean | null)[]
 ): Promise<void> {
   const sheets = await getSheetsClient();
 
-  // A2부터 읽기 → rows[0]은 실제 시트의 2행(A2)
-  const rows = await readSheet(sheetName);
+  const values: (string | null)[][] = [
+    row.map((v) =>
+      v === null || v === undefined ? null : String(v)
+    ),
+  ];
 
-  const index = rows.findIndex((row) => Number(row[0]) === id);
-  if (index === -1) {
-    throw new Error(`[sheets] Row with id=${id} not found in sheet "${sheetName}"`);
-  }
-
-  const currentRow = rows[index];
-  const newRow = updater(currentRow);
-
-  // 실제 시트 row 번호 (헤더가 1행, A2가 rows[0]이므로 +2)
-  const sheetRowNumber = index + 2;
-
-  const range = `${sheetName}!A${sheetRowNumber}:Z${sheetRowNumber}`;
+  const range = `${sheetName}!A${rowIndex}:Z${rowIndex}`;
 
   await sheets.spreadsheets.values.update({
-    spreadsheetId: SHEETS_ID!,
+    spreadsheetId: SPREADSHEET_ID,
     range,
     valueInputOption: "RAW",
-    requestBody: {
-      values: [newRow],
-    },
+    requestBody: { values },
   });
+}
+
+/**
+ * ID 컬럼에서 id를 찾아서 그 행을 업데이트
+ *  - sheetName: 시트 이름 (예: "Users")
+ *  - idColumnIndex: 0 기반 인덱스 (A열=0, B열=1 ...)
+ *  - idValue: 찾을 ID 값
+ *  - row: 새 행 데이터
+ */
+export async function updateRowById(
+  sheetName: string,
+  idColumnIndex: number,
+  idValue: string | number,
+  row: (string | number | boolean | null)[]
+): Promise<void> {
+  // A2부터 읽어오므로 실제 시트 행 번호 = index + 2
+  const rows = await readSheet(sheetName, "A2:Z");
+
+  const targetIndex = rows.findIndex((r) => {
+    const cell = r[idColumnIndex];
+    return cell === String(idValue);
+  });
+
+  if (targetIndex === -1) {
+    throw new Error(
+      `[sheets] updateRowById: row not found in "${sheetName}" for id=${idValue}`
+    );
+  }
+
+  const rowIndex = targetIndex + 2; // 헤더가 1행, 데이터는 2행부터
+
+  await updateRow(sheetName, rowIndex, row);
 }
