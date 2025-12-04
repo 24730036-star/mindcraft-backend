@@ -1,74 +1,122 @@
-// config/sheets.ts
-import path from "path";
-import { google, sheets_v4 } from "googleapis";
+// backend/config/sheets.ts
+import { google } from "googleapis";
 
-const KEYFILEPATH = path.resolve("mindcraft-sheets-service.json");
-const SPREADSHEET_ID = "10zY5a1D00T1dLYis02eM2vprGyb9gInLWjjjntVSZBI";
+/**
+ *  Google Sheets 기본 설정
+ */
+const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
 
-// 1) 인증 + sheets 클라이언트 생성
-async function getSheets(): Promise<sheets_v4.Sheets> {
-  const auth = new google.auth.GoogleAuth({
-    keyFile: KEYFILEPATH,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-  });
+// 스프레드시트 ID (지금 쓰고 있는 ID 그대로 사용)
+const SPREADSHEET_ID =
+  process.env.GOOGLE_SHEETS_ID || "10zY5a1D00T1dLYis02eM2vprGyb9gInLWjjjntVSZBI";
 
-  const client = await auth.getClient();
+/**
+ * row 한 줄 타입
+ *  - boolean 도 들어올 수 있으니까 boolean 포함
+ */
+export type SheetRow = (string | number | boolean | null)[];
 
-  return google.sheets({
-    version: "v4",
-    auth, // auth: client 가 아니라 auth 넘기는 게 타입 충돌이 적습니다.
+/**
+ * Render 에서는 서비스 계정 JSON 전체가
+ * GOOGLE_APPLICATION_CREDENTIALS_JSON 환경변수에 들어 있다고 가정
+ */
+function getGoogleAuth() {
+  const raw = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+
+  if (!raw) {
+    throw new Error(
+      "[sheets] GOOGLE_APPLICATION_CREDENTIALS_JSON env is not set"
+    );
+  }
+
+  let credentials: any;
+  try {
+    credentials = JSON.parse(raw);
+  } catch (e) {
+    console.error("[sheets] Failed to parse GOOGLE_APPLICATION_CREDENTIALS_JSON");
+    throw e;
+  }
+
+  return new google.auth.GoogleAuth({
+    credentials,
+    scopes: SCOPES,
   });
 }
 
-// 2) 읽기: 2행부터 Z열까지 (필요하면 range 변경해서 사용)
+/**
+ * sheets 클라이언트 생성
+ */
+async function getSheetsClient() {
+  // getClient() 가 AnyAuthClient 를 돌려줘서 타입 에러가 나므로 any 로 캐스팅
+  const auth = (await getGoogleAuth().getClient()) as any;
+
+  return google.sheets({
+    version: "v4",
+    auth,
+  });
+}
+
+/**
+ * 시트 읽기
+ */
 export async function readSheet(
   sheetName: string,
   range = "A2:Z"
 ): Promise<string[][]> {
-  const sheets = await getSheets();
+  const sheets = await getSheetsClient();
 
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
     range: `${sheetName}!${range}`,
   });
 
-  // 데이터 없을 때 undefined 방지
-  return (res.data.values as string[][]) || [];
+  return (res.data.values ?? []) as string[][];
 }
 
-// 3) 추가(append): 맨 마지막 다음 행에 추가
-export async function appendRow(
-  sheetName: string,
-  values: (string | number | boolean | null)[]
-): Promise<void> {
-  const sheets = await getSheets();
+/**
+ * 한 줄 append
+ */
+export async function appendRow(sheetName: string, row: SheetRow) {
+  const sheets = await getSheetsClient();
+
+  // undefined 는 null 로 바꿔서 넣기
+  const normalizedRow = row.map((v) =>
+    typeof v === "undefined" ? null : (v as string | number | boolean | null)
+  );
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${sheetName}!A:Z`,
-    valueInputOption: "RAW",
+    range: `${sheetName}!A:A`,
+    valueInputOption: "USER_ENTERED",
     requestBody: {
-      values: [values],
+      values: [normalizedRow],
     },
   });
 }
 
-// 4) 수정(update): 특정 행 전체를 새 값으로 교체
+/**
+ * 한 줄 update
+ *  - rowIndex: 1부터 시작하는 실제 엑셀 줄 번호
+ */
 export async function updateRow(
   sheetName: string,
-  rowIndex: number, // 실제 시트의 행 번호 (헤더 포함, 예: 2,3,4...)
-  values: (string | number | boolean | null)[]
-): Promise<void> {
-  const sheets = await getSheets();
+  rowIndex: number,
+  row: SheetRow
+) {
+  const sheets = await getSheetsClient();
+
+  const normalizedRow = row.map((v) =>
+    typeof v === "undefined" ? null : (v as string | number | boolean | null)
+  );
 
   const range = `${sheetName}!A${rowIndex}:Z${rowIndex}`;
 
   await sheets.spreadsheets.values.update({
     spreadsheetId: SPREADSHEET_ID,
     range,
-    valueInputOption: "RAW",
+    valueInputOption: "USER_ENTERED",
     requestBody: {
-      values: [values],
+      values: [normalizedRow],
     },
   });
 }

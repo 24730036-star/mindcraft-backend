@@ -4,7 +4,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const googleapis_1 = require("googleapis");
-const path_1 = __importDefault(require("path"));
 // index.ts (백엔드 엔트리)
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
@@ -14,8 +13,7 @@ const messages_1 = __importDefault(require("./routes/messages"));
 const accessLog_1 = __importDefault(require("./routes/accessLog"));
 const app = (0, express_1.default)();
 const port = process.env.PORT || 4000;
-// 백엔드 폴더 안에 실제로 존재하는 JSON 파일 이름과 맞추세요.
-const KEYFILEPATH = path_1.default.resolve('mindcraft-sheets-service.json');
+const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
 // 여기는 이미 제대로 들어가 있음
 const SPREADSHEET_ID = '10zY5a1D00T1dLYis02eM2vprGyb9gInLWjjjntVSZBI';
 app.use((0, cors_1.default)());
@@ -45,7 +43,6 @@ async function readStories() {
 }
 async function authSheets() {
     const auth = new googleapis_1.google.auth.GoogleAuth({
-        keyFile: KEYFILEPATH,
         scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
     // getClient() 따로 안 쓰고 GoogleAuth 자체를 auth로 넘깁니다.

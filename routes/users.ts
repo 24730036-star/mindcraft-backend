@@ -1,153 +1,118 @@
 // backend/routes/users.ts
 import { Router } from "express";
 import { readSheet, appendRow } from "../config/sheets";
-import { getNextId } from "../utils/id";
 
 const router = Router();
-
-type BackendRole = "creator" | "developer" | "both" | string;
 
 interface SheetUserRow {
   id: number;
   email: string;
   password: string;
   name: string;
-  role: BackendRole;
+  role: string;
   bio?: string;
   preferredGenres?: string;
   portfolio?: string;
   createdAt?: string;
 }
 
-// 시트 → User 객체
-function rowToUser(row: string[]): SheetUserRow {
+function rowToSafeUser(row: (string | number | boolean | null)[]): SheetUserRow {
   return {
-    id: Number(row[0]),
-    email: row[1],
-    password: row[2],
-    name: row[3],
-    role: (row[4] || "creator") as BackendRole,
-    bio: row[5] || "",
-    preferredGenres: row[6] || "",
-    portfolio: row[7] || "",
-    createdAt: row[8] || "",
+    id: Number(row[0] ?? 0),
+    email: String(row[1] ?? ""),
+    password: String(row[2] ?? ""),
+    name: String(row[3] ?? ""),
+    role: String(row[4] ?? ""),
+    bio: row[5] ? String(row[5]) : "",
+    preferredGenres: row[6] ? String(row[6]) : "",
+    portfolio: row[7] ? String(row[7]) : "",
+    createdAt: row[8] ? String(row[8]) : "",
   };
 }
 
-// User 객체 → 시트 한 줄
-function userToRow(u: SheetUserRow): (string | number)[] {
-  return [
-    u.id,
-    u.email,
-    u.password,
-    u.name,
-    u.role,
-    u.bio ?? "",
-    u.preferredGenres ?? "",
-    u.portfolio ?? "",
-    u.createdAt ?? new Date().toISOString(),
-  ];
+function toResponseUser(row: SheetUserRow) {
+  const { password, ...safe } = row;
+  return safe;
 }
 
-/** GET /api/users  : 유저 전체 조회 */
-router.get("/", async (req, res) => {
+// GET /api/users
+router.get("/", async (_req, res) => {
   try {
-    const rows = await readSheet("Users"); // 시트 이름
-    if (!rows) return res.json([]);
-
-    const users = rows.map(rowToUser).map((u) => ({
-      id: u.id,
-      email: u.email,
-      name: u.name,
-      role: u.role,
-      bio: u.bio,
-      preferredGenres: u.preferredGenres,
-      portfolio: u.portfolio,
-      createdAt: u.createdAt,
-    }));
-
+    const rows = await readSheet("Users");
+    const users = rows.map(rowToSafeUser).map(toResponseUser);
     res.json(users);
-  } catch (err) {
-    console.error("[GET /api/users] ERROR", err);
-    res.status(500).json({ error: "Failed to fetch users" });
+  } catch (err: any) {
+    console.error("[GET /api/users] ERROR:", err);
+    res.status(500).json({
+      error: "Failed to fetch users",
+      detail: String(err?.message ?? err),
+    });
   }
 });
 
-/** POST /api/users/register : 회원가입 */
+// POST /api/users/register
 router.post("/register", async (req, res) => {
   try {
-    const { email, password, name, role } = req.body as {
+    const { email, password, name, role, bio, preferredGenres, portfolio } = req.body as {
       email?: string;
       password?: string;
       name?: string;
-      role?: BackendRole;
+      role?: string;
+      bio?: string;
+      preferredGenres?: string;
+      portfolio?: string;
     };
 
     if (!email || !password || !name || !role) {
-      return res.status(400).json({ error: "필수 항목이 누락되었습니다." });
+      return res.status(400).json({ error: "email, password, name, role 는 필수입니다." });
     }
 
-    const rows = (await readSheet("Users")) || [];
+    const rows = await readSheet("Users");
 
-    // 이메일 중복 체크
-    const exists = rows.some((row) => row[1] === email);
+    const exists = rows.some((r) => String(r[1] ?? "") === email);
     if (exists) {
-      return res.status(409).json({ error: "이미 사용 중인 이메일입니다." });
+      return res.status(400).json({ error: "이미 사용 중인 이메일입니다." });
     }
 
-    const nextId = await getNextId("Users"); // 유틸에 이미 있음
-    const newUser: SheetUserRow = {
-      id: nextId,
+    let maxId = 0;
+    for (const r of rows) {
+      const id = Number(r[0] ?? 0);
+      if (!Number.isNaN(id) && id > maxId) maxId = id;
+    }
+    const newId = maxId + 1;
+    const now = new Date().toISOString();
+
+    await appendRow("Users", [
+      String(newId),
       email,
       password,
       name,
       role,
-      bio: "",
-      preferredGenres: "",
-      portfolio: "",
-      createdAt: new Date().toISOString(),
+      bio ?? "",
+      preferredGenres ?? "",
+      portfolio ?? "",
+      now,
+    ]);
+
+    const user: SheetUserRow = {
+      id: newId,
+      email,
+      password,
+      name,
+      role,
+      bio,
+      preferredGenres,
+      portfolio,
+      createdAt: now,
     };
 
-    await appendRow("Users", userToRow(newUser));
-
-    // 비밀번호 빼고 리턴 (프론트의 BackendSafeUser 형태)
-    const { password: _, ...safeUser } = newUser;
-    res.status(201).json(safeUser);
-  } catch (err) {
-    console.error("[POST /api/users/register] ERROR", err);
-    res.status(500).json({ error: "회원가입에 실패했습니다." });
-  }
-});
-
-/** POST /api/users/login : 로그인 */
-router.post("/login", async (req, res) => {
-  try {
-    const { email, password } = req.body as {
-      email?: string;
-      password?: string;
-    };
-
-    if (!email || !password) {
-      return res.status(400).json({ error: "이메일/비밀번호가 필요합니다." });
-    }
-
-    const rows = (await readSheet("Users")) || [];
-    const userRow = rows.find(
-      (row) => row[1] === email && row[2] === password
-    );
-
-    if (!userRow) {
-      return res.status(401).json({ error: "이메일 또는 비밀번호가 올바르지 않습니다." });
-    }
-
-    const user = rowToUser(userRow);
-    const { password: _, ...safeUser } = user;
-
-    // 프론트에서 (data as any).user 로 받으니까 이 형태로
-    res.json({ user: safeUser });
-  } catch (err) {
-    console.error("[POST /api/users/login] ERROR", err);
-    res.status(500).json({ error: "로그인에 실패했습니다." });
+    res.status(201).json(toResponseUser(user));
+  } catch (err: any) {
+    console.error("[POST /api/users/register] ERROR:", err);
+    res.status(500).json({
+      error: "회원가입에 실패했습니다.",
+      detail: String(err?.message ?? err),
+    });
   }
 });
 
