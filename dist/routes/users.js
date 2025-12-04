@@ -1,198 +1,193 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+// backend/routes/users.ts
 const express_1 = require("express");
 const sheets_1 = require("../config/sheets");
 const router = (0, express_1.Router)();
 const SHEET_NAME = "Users";
-/** 시트에서 모든 행 읽어오기 (헤더 제외) */
-async function getAllUserRows() {
-    const rows = await (0, sheets_1.readSheet)(SHEET_NAME, "A2:I");
-    return rows !== null && rows !== void 0 ? rows : [];
-}
-/** 시트 row → SheetUserRow */
-function mapRowToSheetUser(row) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+// 시트 -> 백엔드 유저 객체
+function rowToUser(row) {
     return {
-        id: Number((_a = row[0]) !== null && _a !== void 0 ? _a : 0),
-        email: (_b = row[1]) !== null && _b !== void 0 ? _b : "",
-        password: (_c = row[2]) !== null && _c !== void 0 ? _c : "",
-        name: (_d = row[3]) !== null && _d !== void 0 ? _d : "",
-        role: (_e = row[4]) !== null && _e !== void 0 ? _e : "",
-        bio: (_f = row[5]) !== null && _f !== void 0 ? _f : "",
-        preferredGenres: (_g = row[6]) !== null && _g !== void 0 ? _g : "",
-        portfolio: (_h = row[7]) !== null && _h !== void 0 ? _h : "",
-        createdAt: (_j = row[8]) !== null && _j !== void 0 ? _j : "",
+        id: Number(row[0]),
+        email: row[1] || "",
+        password: row[2] || "",
+        name: row[3] || "",
+        role: row[4] || "",
+        bio: row[5] || "",
+        preferredGenres: row[6] || "",
+        portfolio: row[7] || "",
+        createdAt: row[8] || "",
+        updatedAt: row[9] || "",
+        status: row[10] || "active",
     };
 }
-/** SheetUserRow → 프론트로 보내 줄 유저 객체(비밀번호 제거) */
-function toSafeUser(row) {
+// 유저 객체 -> 시트 행
+function userToRow(user) {
+    var _a;
+    return [
+        String(user.id),
+        user.email,
+        user.password,
+        user.name,
+        user.role,
+        user.bio,
+        user.preferredGenres,
+        user.portfolio,
+        user.createdAt,
+        user.updatedAt,
+        (_a = user.status) !== null && _a !== void 0 ? _a : "active",
+    ];
+}
+// 클라이언트에 보내는 안전한 유저(비밀번호 제외)
+function toSafeUser(user) {
     return {
-        id: row.id,
-        email: row.email,
-        name: row.name,
-        role: row.role,
-        bio: row.bio,
-        preferredGenres: row.preferredGenres,
-        portfolio: row.portfolio,
-        createdAt: row.createdAt,
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        bio: user.bio,
+        preferredGenres: user.preferredGenres,
+        portfolio: user.portfolio,
+        createdAt: user.createdAt,
     };
 }
-/** 새 ID 생성: 현재 시트의 max(id)+1 */
-async function getNextUserId() {
-    const rows = await getAllUserRows();
-    if (rows.length === 0)
-        return 1;
-    const ids = rows.map((r) => { var _a; return Number((_a = r[0]) !== null && _a !== void 0 ? _a : 0) || 0; });
-    return Math.max(...ids) + 1;
-}
-/* ============================
-   GET /api/users  (리스트)
-============================ */
+// GET /api/users
 router.get("/", async (_req, res) => {
     try {
-        const rows = await getAllUserRows();
-        const users = rows.map(mapRowToSheetUser).map(toSafeUser);
-        res.json(users);
+        const rows = await (0, sheets_1.readSheet)(SHEET_NAME);
+        if (!rows || rows.length === 0) {
+            return res.json([]);
+        }
+        const users = rows
+            .map(rowToUser)
+            .filter((u) => u.status !== "deleted");
+        res.json(users.map(toSafeUser));
     }
     catch (err) {
         console.error("[GET /api/users] ERROR:", err);
-        res.status(500).json({
-            error: "Failed to fetch users",
-            detail: String(err),
-        });
+        res.status(500).json({ error: "Failed to fetch users" });
     }
 });
-/* ============================
-   POST /api/users/register  (회원가입)
-   body: { email, password, name, role }
-============================ */
+// POST /api/users/register
 router.post("/register", async (req, res) => {
+    var _a;
     try {
         const { email, password, name, role } = req.body;
         if (!email || !password || !name || !role) {
-            return res.status(400).json({
-                error: "email, password, name, role 은 필수입니다.",
-            });
+            return res.status(400).json({ error: "모든 필드를 입력해야 합니다." });
         }
-        const rows = await getAllUserRows();
+        const rows = (_a = await (0, sheets_1.readSheet)(SHEET_NAME)) !== null && _a !== void 0 ? _a : [];
+        // 이메일 중복 체크 (deleted는 무시)
         const existing = rows
-            .map(mapRowToSheetUser)
-            .find((u) => u.email === email);
+            .map(rowToUser)
+            .find((u) => u.status !== "deleted" && u.email === email);
         if (existing) {
             return res.status(400).json({ error: "이미 가입된 이메일입니다." });
         }
-        const id = await getNextUserId();
-        const createdAt = new Date().toISOString();
-        const row = [
-            id,
+        const nextId = rows.length > 0
+            ? Math.max(...rows.map((r) => Number(r[0]) || 0)) + 1
+            : 1;
+        const now = new Date().toISOString();
+        const newUser = {
+            id: nextId,
             email,
             password,
-            name,
-            role,
-            "",
-            "",
-            "",
-            createdAt,
-        ];
-        await (0, sheets_1.appendRow)(SHEET_NAME, row);
-        const newUser = {
-            id,
-            email,
             name,
             role,
             bio: "",
             preferredGenres: "",
             portfolio: "",
-            createdAt,
+            createdAt: now,
+            updatedAt: now,
+            status: "active",
         };
-        res.status(201).json(newUser);
+        await (0, sheets_1.appendRow)(SHEET_NAME, userToRow(newUser));
+        res.status(201).json(toSafeUser(newUser));
     }
     catch (err) {
         console.error("[POST /api/users/register] ERROR:", err);
-        res.status(500).json({
-            error: "회원가입 처리 중 오류가 발생했습니다.",
-            detail: String(err),
-        });
+        res.status(500).json({ error: "회원가입에 실패했습니다." });
     }
 });
-/* ============================
-   POST /api/users/login  (로그인)
-   body: { email, password }
-============================ */
+// POST /api/users/login
 router.post("/login", async (req, res) => {
+    var _a;
     try {
         const { email, password } = req.body;
-        if (!email || !password) {
-            return res
-                .status(400)
-                .json({ error: "email과 password는 필수입니다." });
-        }
-        const rows = await getAllUserRows();
-        const match = rows
-            .map(mapRowToSheetUser)
-            .find((u) => u.email === email && u.password === password);
-        if (!match) {
+        const rows = (_a = await (0, sheets_1.readSheet)(SHEET_NAME)) !== null && _a !== void 0 ? _a : [];
+        const users = rows.map(rowToUser);
+        const user = users.find((u) => u.status !== "deleted" &&
+            u.email === email &&
+            u.password === password);
+        if (!user) {
             return res.status(401).json({ error: "이메일 또는 비밀번호가 올바르지 않습니다." });
         }
-        const safeUser = toSafeUser(match);
-        res.json({ user: safeUser });
+        res.json({ user: toSafeUser(user) });
     }
     catch (err) {
         console.error("[POST /api/users/login] ERROR:", err);
-        res.status(500).json({
-            error: "로그인 처리 중 오류가 발생했습니다.",
-            detail: String(err),
-        });
+        res.status(500).json({ error: "로그인에 실패했습니다." });
     }
 });
-/* ============================
-   PUT /api/users/:id  (프로필 수정)
-   body: { name?, role?, bio?, preferredGenres?, portfolio? }
-============================ */
+// PUT /api/users/:id  (프로필 수정)
 router.put("/:id", async (req, res) => {
+    var _a;
     try {
-        const id = Number(req.params.id);
-        if (!id || Number.isNaN(id)) {
-            return res.status(400).json({ error: "잘못된 id 입니다." });
-        }
+        const userId = Number(req.params.id);
         const { name, role, bio, preferredGenres, portfolio } = req.body;
-        const rows = await getAllUserRows();
-        const sheetUsers = rows.map(mapRowToSheetUser);
-        const target = sheetUsers.find((u) => u.id === id);
-        if (!target) {
-            return res.status(404).json({ error: "해당 사용자를 찾을 수 없습니다." });
+        const rows = (_a = await (0, sheets_1.readSheet)(SHEET_NAME)) !== null && _a !== void 0 ? _a : [];
+        const targetRow = rows.find((r) => Number(r[0]) === userId);
+        if (!targetRow) {
+            return res.status(404).json({ error: "User not found" });
         }
-        const updated = {
-            ...target,
-            name: name !== null && name !== void 0 ? name : target.name,
-            role: role !== null && role !== void 0 ? role : target.role,
-            bio: bio !== null && bio !== void 0 ? bio : target.bio,
-            preferredGenres: preferredGenres !== null && preferredGenres !== void 0 ? preferredGenres : target.preferredGenres,
-            portfolio: portfolio !== null && portfolio !== void 0 ? portfolio : target.portfolio,
+        const oldUser = rowToUser(targetRow);
+        if (oldUser.status === "deleted") {
+            return res.status(404).json({ error: "User not found" });
+        }
+        const now = new Date().toISOString();
+        const updatedUser = {
+            ...oldUser,
+            name: name !== null && name !== void 0 ? name : oldUser.name,
+            role: role !== null && role !== void 0 ? role : oldUser.role,
+            bio: bio !== null && bio !== void 0 ? bio : oldUser.bio,
+            preferredGenres: preferredGenres !== null && preferredGenres !== void 0 ? preferredGenres : oldUser.preferredGenres,
+            portfolio: portfolio !== null && portfolio !== void 0 ? portfolio : oldUser.portfolio,
+            updatedAt: now,
         };
-        // 👇 row 타입을 명시해 줌
-        const row = [
-            updated.id,
-            updated.email,
-            updated.password,
-            updated.name,
-            updated.role,
-            updated.bio,
-            updated.preferredGenres,
-            updated.portfolio,
-            updated.createdAt,
-        ];
-        // 👇 updateRowById 를 4개의 인자로 호출
-        await (0, sheets_1.updateRowById)(SHEET_NAME, 0, id, row);
-        const safeUser = toSafeUser(updated);
-        res.json(safeUser);
+        await (0, sheets_1.updateRowById)(SHEET_NAME, 0, userId, userToRow(updatedUser));
+        res.json(toSafeUser(updatedUser));
     }
     catch (err) {
         console.error("[PUT /api/users/:id] ERROR:", err);
-        res.status(500).json({
-            error: "프로필 수정 중 오류가 발생했습니다.",
-            detail: String(err),
-        });
+        res.status(500).json({ error: "Failed to update user" });
+    }
+});
+// DELETE /api/users/:id  (회원 탈퇴 = status를 deleted로 변경)
+router.delete("/:id", async (req, res) => {
+    var _a;
+    try {
+        const userId = Number(req.params.id);
+        const rows = (_a = await (0, sheets_1.readSheet)(SHEET_NAME)) !== null && _a !== void 0 ? _a : [];
+        const targetRow = rows.find((r) => Number(r[0]) === userId);
+        if (!targetRow) {
+            return res.status(404).json({ error: "User not found" });
+        }
+        const oldUser = rowToUser(targetRow);
+        if (oldUser.status === "deleted") {
+            return res.status(404).json({ error: "User already deleted" });
+        }
+        const now = new Date().toISOString();
+        const deletedUser = {
+            ...oldUser,
+            status: "deleted",
+            updatedAt: now,
+        };
+        await (0, sheets_1.updateRowById)(SHEET_NAME, 0, userId, userToRow(deletedUser));
+        res.json({ success: true });
+    }
+    catch (err) {
+        console.error("[DELETE /api/users/:id] ERROR:", err);
+        res.status(500).json({ error: "Failed to delete user" });
     }
 });
 exports.default = router;
