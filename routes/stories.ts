@@ -18,6 +18,7 @@ const SHEET_NAME = "Stories";
  *  H: detail
  *  I: createdAt
  *  J: updatedAt
+ *  K: status   // 모집중 / 진행중 / 완료
  */
 export interface Story {
   id: number;
@@ -30,6 +31,7 @@ export interface Story {
   detail: string;
   createdAt: string;
   updatedAt: string;
+  status: string; // 진행도
 }
 
 function rowToStory(row: string[]): Story {
@@ -44,6 +46,7 @@ function rowToStory(row: string[]): Story {
     detail: row[7] ?? "",
     createdAt: row[8] ?? "",
     updatedAt: row[9] ?? "",
+    status: row[10] ?? "모집중", // 비어있으면 기본값
   };
 }
 
@@ -59,6 +62,7 @@ function storyToRow(story: Story): string[] {
     story.detail,
     story.createdAt,
     story.updatedAt,
+    story.status ?? "모집중",
   ];
 }
 
@@ -66,7 +70,7 @@ function storyToRow(story: Story): string[] {
    GET /api/stories
    전체 스토리 목록
 =========================== */
-router.get("/", async (req, res) => {
+router.get("/", async (_req, res) => {
   try {
     const rows = await readSheet(SHEET_NAME);
 
@@ -113,7 +117,8 @@ router.get("/:id", async (req, res) => {
 =========================== */
 router.post("/", async (req, res) => {
   try {
-    const { ownerId, title, genre, keywords, teaser, outline, detail } = req.body;
+    const { ownerId, title, genre, keywords, teaser, outline, detail } =
+      req.body;
 
     if (!ownerId || !title) {
       return res
@@ -123,6 +128,10 @@ router.post("/", async (req, res) => {
 
     const newId = await getNextId(SHEET_NAME);
     const now = new Date().toISOString();
+
+    // 프론트에서 생성 시에는 진행도 값이 없으므로 기본값 "모집중"
+    const status: string =
+      req.body.recruitmentStatus ?? req.body.status ?? "모집중";
 
     const story: Story = {
       id: newId,
@@ -135,6 +144,7 @@ router.post("/", async (req, res) => {
       detail: detail ?? "",
       createdAt: now,
       updatedAt: now,
+      status,
     };
 
     await appendRow(SHEET_NAME, storyToRow(story));
@@ -148,7 +158,7 @@ router.post("/", async (req, res) => {
 
 /* ===========================
    PUT /api/stories/:id
-   스토리 수정
+   스토리 수정 (진행도 포함)
 =========================== */
 router.put("/:id", async (req, res) => {
   try {
@@ -168,6 +178,13 @@ router.put("/:id", async (req, res) => {
     const currentStory = rowToStory(rows[rowIndex]);
     const now = new Date().toISOString();
 
+    // 프론트에서 넘어오는 값: recruitmentStatus
+    const newStatus: string =
+      req.body.recruitmentStatus ??
+      req.body.status ??
+      currentStory.status ??
+      "모집중";
+
     const updated: Story = {
       ...currentStory,
       ownerId:
@@ -182,6 +199,7 @@ router.put("/:id", async (req, res) => {
       detail: req.body.detail ?? currentStory.detail,
       createdAt: currentStory.createdAt || now,
       updatedAt: now,
+      status: newStatus,
     };
 
     // 헤더 한 줄 있다고 가정해서 +2
